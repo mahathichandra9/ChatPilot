@@ -40,4 +40,4 @@ def play_sound(file):
         # Release PortAudio system resources (6)
         p.terminate()
 
-play_sound("bulb.wav")
+play_sound("recording_20250924_101252.wav")
