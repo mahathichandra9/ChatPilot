@@ -1,29 +1,32 @@
-import sounddevice as sd
-import queue
+import os
+import sys
 import json
+import subprocess
 from vosk import Model, KaldiRecognizer
 
 MODEL_PATH = "vosk-model-small-en-us-0.15"
+
+# Load Vosk model
 model = Model(MODEL_PATH)
 recognizer = KaldiRecognizer(model, 16000)
 
-q = queue.Queue()
+# Use arecord to capture audio in real-time
+arecord_cmd = [
+    "arecord",
+    "-D", "hw:2,0",   # Change this to your USB mic device
+    "-f", "S16_LE", "-c1",
+    "-r", "44100",
+    "-c", "1",
+    "-t", "raw"
+]
 
-def callback(indata, frames, time, status):
-    if status:
-        print(status)
-    q.put(bytes(indata))
-
-def main():
-    with sd.RawInputStream(samplerate=16000, blocksize=8000,
-                           dtype='int16', channels=1, callback=callback):
-        print("Listening... (Ctrl+C to stop)")
-        while True:
-            data = q.get()
-            if recognizer.AcceptWaveform(data):
-                result = json.loads(recognizer.Result())
-                if result["text"]:
-                    print("You said:", result["text"])
-
-if __name__ == "__main__":
-    main()
+print("Listening... Press Ctrl+C to stop.")
+with subprocess.Popen(arecord_cmd, stdout=subprocess.PIPE, bufsize=8000) as stream:
+    while True:
+        data = stream.stdout.read(4000)
+        if len(data) == 0:
+            break
+        if recognizer.AcceptWaveform(data):
+            result = json.loads(recognizer.Result())
+            if result.get("text"):
+                print("You said:", result["text"])
