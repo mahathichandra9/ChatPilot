@@ -1,36 +1,54 @@
 import heapq
 import re
 
-# -------------------- GLOBAL GRAPH --------------------
+# -------------------- FILES --------------------
 GRAPH_FILE = "weighted_adj_list.txt"
-graph = {}  # global graph loaded at startup
+COORDS_FILE = "cords.txt"
+
+graph = {}    # global graph
+coords = {}   # global coordinates
+
+
+# -------------------- READ COORDINATES --------------------
+def read_coordinates(filename):
+    """
+    Reads node coordinates from cords.txt
+    Format:
+    0 17.3970873 78.4897846 500.5
+    1 17.3970752 78.4898995 501.32
+    """
+    c = {}
+    with open(filename, 'r') as f:
+        for line in f:
+            if line.strip():
+                parts = line.strip().split()
+                node = int(parts[0])
+                lat, lon, alt = map(float, parts[1:])
+                c[node] = [lat, lon, alt]  # ✅ store as list
+    return c
 
 
 # -------------------- READ GRAPH --------------------
 def read_adjacency_list(filename):
     """
-    Reads weighted adjacency list from a file and ensures bidirectional edges.
-    Expected format:
-        0: 1 (12.85m), 2 (10.43m)
-        1: 0 (12.85m), 2 (11.67m)
+    Reads weighted adjacency list and ensures bidirectional edges.
+    Format:
+    0: 1 (12.85m), 2 (10.43m)
     """
     g = {}
     with open(filename, 'r') as f:
         for line in f:
             if ':' not in line:
                 continue
-
             node, rest = line.strip().split(':')
             node = int(node.strip())
-
             neighbors = {}
             matches = re.findall(r'(\d+)\s*\(([\d.]+)m\)', rest)
             for nbr, dist in matches:
                 neighbors[int(nbr)] = float(dist)
-
             g[node] = neighbors
 
-    # ✅ Ensure bidirectional edges (undirected graph)
+    # ✅ Ensure bidirectional edges
     for node, nbrs in list(g.items()):
         for nbr, dist in nbrs.items():
             if nbr not in g:
@@ -43,7 +61,7 @@ def read_adjacency_list(filename):
 
 # -------------------- HEURISTIC FUNCTION --------------------
 def heuristic(a, b):
-    """Dummy heuristic (acts like Dijkstra since we have no coordinates)."""
+    """Dummy heuristic — acts like Dijkstra."""
     return 0
 
 
@@ -51,7 +69,7 @@ def heuristic(a, b):
 def a_star(start, goal):
     """
     A* Search Algorithm using global graph.
-    Finds the shortest path between start and goal.
+    Returns path as a list of dicts: [{'node': n, 'coords': [lat, lon, alt]}, ...]
     """
     open_set = []
     heapq.heappush(open_set, (0, start))
@@ -65,12 +83,18 @@ def a_star(start, goal):
         _, current = heapq.heappop(open_set)
         if current == goal:
             # Reconstruct path
-            path = []
+            path_nodes = []
             while current in came_from:
-                path.append(current)
+                path_nodes.append(current)
                 current = came_from[current]
-            path.append(start)
-            path.reverse()
+            path_nodes.append(start)
+            path_nodes.reverse()
+
+            # ✅ Build path with lists instead of tuples
+            path = [
+                {"node": n, "coords": coords.get(n, [None, None, None])}
+                for n in path_nodes
+            ]
             return path, g_score[goal]
 
         for neighbor, dist in graph[current].items():
@@ -86,9 +110,12 @@ def a_star(start, goal):
 
 # -------------------- MAIN --------------------
 if __name__ == "__main__":
-    # Load the global graph once
+    # Load global data
+    coords = read_coordinates(COORDS_FILE)
     graph = read_adjacency_list(GRAPH_FILE)
+
     print(f"✅ Graph loaded from '{GRAPH_FILE}' with {len(graph)} nodes.")
+    print(f"✅ Coordinates loaded from '{COORDS_FILE}'.")
     print("Available nodes:", sorted(graph.keys()))
 
     try:
@@ -99,9 +126,13 @@ if __name__ == "__main__":
             print("❌ Invalid node numbers.")
         else:
             path, cost = a_star(start, goal)
+            print(f"Path = {path}")
             if path:
-                print(f"\n✅ Shortest Path: {' → '.join(map(str, path))}")
-                print(f"📏 Total Distance: {round(cost, 2)} meters")
+                print("\n✅ Shortest Path:")
+                for step in path:
+                    node, coords_list = step["node"], step["coords"]
+                    print(f"  Node {node}: {coords_list}")
+                print(f"\n📏 Total Distance: {round(cost, 2)} meters")
             else:
                 print("⚠️ No path found between the given nodes.")
     except ValueError:
