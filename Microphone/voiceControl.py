@@ -7,7 +7,7 @@ import time
 from dronekit import connect, VehicleMode
 import os
 from sttOnRover import stt
-import pyttsx3
+# import pyttsx3
 
 # ==============================
 # Rover Motor Control Interface
@@ -23,11 +23,11 @@ class Rover:
         self.ddsm_ser = serial.Serial(port, baudrate=baud)
         self.ddsm_ser.setRTS(False)
         self.ddsm_ser.setDTR(False)
-        self.engine = pyttsx3.init()
+        # self.engine = pyttsx3.init()
         print("✅ Rover control ready (keyboard mode)")
 
-    def talk(self, response):
-        self.engine.say(response)
+    # def talk(self, response):
+    #     self.engine.say(response)
 
     def set_motor_speeds(self, left, right):
         """Send motor speeds to the rover (replace this with your own hardware logic)."""
@@ -83,7 +83,7 @@ def get_location():
 def main():
     print("Connected")
     rover = Rover()
-    speed = 80
+    speed = 40
     print("\n🎮 Rover voice Controller (Skid Steering)")
     print("============================================")
     print("Use keys:")
@@ -98,14 +98,14 @@ def main():
                 command = stt().lower()
                 if (command == "forward"):
                     rover.set_motor_speeds(speed, speed)
-                    rover.talk("Moving forward")
+                    # rover.talk("Moving forward")
                 elif (command == "stop"):
                     rover.set_motor_speeds(0, 0)
-                    rover.talk("Stopping rover")
+                    # rover.talk("Stopping rover")
                 elif(command == "left"):
-                    rover.talk("Left")
+                    # rover.talk("Left")
                     rover.set_motor_speeds(30, -30)
-                elif (command == "right"):
+                # elif (command == "right"):
                     rover.talk("Right")
                     rover.set_motor_speeds(-30, 30)
             elif key == 'q':

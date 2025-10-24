@@ -10,7 +10,7 @@ SAMPLE_RATE = 16000        # Matches your arecord rate
 CHANNELS = 1               # Mono
 DEVICE = 'hw:1,0'          # I2S microphone device
 DTYPE = 'int32'            # Match S32_LE
-CHUNK_DURATION = 5         # seconds per recognition chunk
+CHUNK_DURATION = 3         # seconds per recognition chunk
 
 # ====== Initialize recognizer ======
 recognizer = sr.Recognizer()
