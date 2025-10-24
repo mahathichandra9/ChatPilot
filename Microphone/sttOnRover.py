@@ -30,12 +30,13 @@ def record_chunk(duration=CHUNK_DURATION):
     audio_float = audio_data.astype(np.float32) / np.iinfo(np.int32).max
     return audio_float
 
-def audio_to_text(audio_float):
+def stt():
     """Convert NumPy audio array to text using SpeechRecognition"""
     # Save to in-memory WAV buffer
+    audio_float = record_chunk()
     buf = io.BytesIO()
-    # sf.write(buf, audio_float, SAMPLE_RATE, format='WAV', subtype='PCM_16')
-    sf.write()
+    sf.write(buf, audio_float, SAMPLE_RATE, format='WAV', subtype='PCM_16')
+    # sf.write()
     buf.seek(0)
 
     # Recognize speech from buffer
@@ -43,7 +44,31 @@ def audio_to_text(audio_float):
         audio = recognizer.record(source)
     try:
         text = recognizer.recognize_google(audio)
+
         print(f"🗣  {text}")
+        return text
+    except sr.UnknownValueError:
+        print("🤔 Could not understand audio.")
+    except sr.RequestError as e:
+        print(f"⚠ API request failed: {e}")
+
+def audio_to_text(audio_float):
+    """Convert NumPy audio array to text using SpeechRecognition"""
+    # Save to in-memory WAV buffer
+    audio_float = record_chunk()
+    buf = io.BytesIO()
+    sf.write(buf, audio_float, SAMPLE_RATE, format='WAV', subtype='PCM_16')
+    # sf.write()
+    buf.seek(0)
+
+    # Recognize speech from buffer
+    with sr.AudioFile(buf) as source:
+        audio = recognizer.record(source)
+    try:
+        text = recognizer.recognize_google(audio)
+
+        print(f"🗣  {text}")
+        return text
     except sr.UnknownValueError:
         print("🤔 Could not understand audio.")
     except sr.RequestError as e:
