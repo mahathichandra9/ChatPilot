@@ -21,7 +21,11 @@ SILENCE_LIMIT = 1.0            # seconds of silence to stop recording
 
 # ====== INITIALIZE ======
 recognizer = sr.Recognizer()
-porcupine = pvporcupine.create(keywords=[WAKE_WORD])
+porcupine = pvporcupine.create(
+        access_key="6ZxVPO4M7eURSKhjbfUVBKzCYQHEPEUAvh+zkaFQsUr5mSfkMcrF1w==",
+        # keyword_paths=[f'./Hey-Iris_en_raspberry-pi_v3_0_0.ppn']
+        keywords=["jarvis"]
+    )
 FRAME_LENGTH = porcupine.frame_length
 vad = webrtcvad.Vad(VAD_SENSITIVITY)
 
