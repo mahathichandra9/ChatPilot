@@ -61,18 +61,6 @@ def create_adjacency_list(coords, connections):
     return adj_list
 
 
-def create_adjacency_matrix(coords, connections):
-    """Return weighted adjacency matrix using Haversine distance."""
-    n = len(coords)
-    matrix = [[0.0 for _ in range(n)] for _ in range(n)]
-    for node, neighbors in connections.items():
-        for neighbor in neighbors:
-            if neighbor not in coords:
-                continue
-            dist = haversine_distance(coords[node], coords[neighbor])
-            matrix[node][neighbor] = round(dist, 2)
-    return matrix
-
 
 # -------------------- SAVE OUTPUT FILES --------------------
 def save_adjacency_list(filename, adj_list):
@@ -94,10 +82,9 @@ if __name__ == "__main__":
     connections = read_connections("list.txt")
 
     adj_list = create_adjacency_list(coords, connections)
-    adj_matrix = create_adjacency_matrix(coords, connections)
+
 
     save_adjacency_list("weighted_adj_list.txt", adj_list)
-    save_adjacency_matrix("weighted_adj_matrix.txt", adj_matrix)
 
     print("✅ Weighted adjacency list saved to 'weighted_adj_list.txt'")
-    print("✅ Weighted adjacency matrix saved to 'weighted_adj_matrix.txt'")
+

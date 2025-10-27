@@ -3,7 +3,7 @@ import re
 
 # -------------------- FILES --------------------
 GRAPH_FILE = "weighted_adj_list.txt"
-COORDS_FILE = "cords.txt"
+COORDS_FILE = "logged_coordinates.txt"
 
 graph = {}    # global graph
 coords = {}   # global coordinates
@@ -71,6 +71,12 @@ def a_star(start, goal):
     A* Search Algorithm using global graph.
     Returns path as a list of dicts: [{'node': n, 'coords': [lat, lon, alt]}, ...]
     """
+    coords = read_coordinates(COORDS_FILE)
+    graph = read_adjacency_list(GRAPH_FILE)
+    # print(f"Graph = {graph}")
+    # print(f"Coords = {coords}")
+    # print(f"Start = {start}")
+    # print(f"End = {goal}")
     open_set = []
     heapq.heappush(open_set, (0, start))
     came_from = {}
