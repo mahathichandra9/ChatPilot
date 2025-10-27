@@ -30,6 +30,16 @@ vad = webrtcvad.Vad(VAD_SENSITIVITY)
 
 print(f"🎧 Listening for wake word: '{WAKE_WORD}'... (Frame length: {FRAME_LENGTH})")
 
+# ====== FUNCTION: AUTO GAIN CONTROL ======
+def auto_gain(audio_float):
+    rms = np.sqrt(np.mean(audio_float ** 2))
+    target_rms = 0.1  # target loudness level
+    if rms > 0:
+        gain = target_rms / rms
+        gain = np.clip(gain, 1.0, 4.0)  # prevent overboost
+        audio_float *= gain
+    return np.clip(audio_float, -1.0, 1.0)
+
 # ====== FUNCTION: RECORD UNTIL SILENCE ======
 def record_until_silence():
     print("🎙 Wake word detected! Listening to your speech...")
@@ -73,16 +83,29 @@ def record_until_silence():
         print("⚠️ No speech detected.")
         return None
 
-    audio_np = np.frombuffer(pcm_concat, dtype=np.int16).astype(np.float32) / 32767.0
+    # --- Convert and apply soft gain boost ---
+    audio_np_int16 = np.frombuffer(pcm_concat, dtype=np.int16)
+    audio_np_float = audio_np_int16.astype(np.float32) / 32767.0
+    audio_np_float = auto_gain(audio_np_float)
+    audio_np_int16 = np.int16(audio_np_float * 32767)
 
-    # Save the recorded audio (overwrites old file)
-    sf.write(SAVE_PATH, audio_np, SAMPLE_RATE, format='WAV', subtype='PCM_16')
-    print(f"✅ Saved command to '{SAVE_PATH}' (overwritten previous one)")
-    return audio_np
+    # --- Normalize volume before saving ---
+    max_val = np.max(np.abs(audio_np_int16))
+    if max_val > 0:
+        audio_np_int16 = np.int16(audio_np_int16 / max_val * 30000)
 
+    sf.write(SAVE_PATH, audio_np_int16, SAMPLE_RATE, format='WAV', subtype='PCM_16')
+    print(f"✅ Saved command to '{SAVE_PATH}' (normalized and gain-adjusted)")
+
+    return audio_np_float
 
 # ====== FUNCTION: SPEECH TO TEXT ======
 def audio_to_text(audio_float):
+    # Normalize amplitude before STT
+    max_val = np.max(np.abs(audio_float))
+    if max_val > 0:
+        audio_float = audio_float / max_val
+
     buf = io.BytesIO()
     sf.write(buf, audio_float, SAMPLE_RATE, format='WAV', subtype='PCM_16')
     buf.seek(0)
@@ -96,7 +119,6 @@ def audio_to_text(audio_float):
         print("🤔 Could not understand your speech.")
     except sr.RequestError as e:
         print(f"⚠️ STT request failed: {e}")
-
 
 # ====== MAIN LOOP ======
 stream = None
