@@ -1,37 +1,28 @@
 from dronekit import connect, VehicleMode, LocationGlobalRelative
 import math
 import time
-import threading
 import serial
 import json
-import paho.mqtt.client as mqtt  # Import MQTT library
+import paho.mqtt.client as mqtt
 import pyttsx3
-# from playaudio import play_sound
 from AStarSearch import a_star
 
 # =================== CONSTANTS ===================
-PIXHAWK_PORT = '/dev/ttyACM0'   # Pixhawk serial port
-# PIXHAWK_PORT = "tcp:192.168.80.1:5762"
+PIXHAWK_PORT = '/dev/ttyACM0'
 DDSM_PORT = '/dev/ttyACM1'
 SERIAL_BAUDRATE = 115200
 BAUDRATE = 57600
-ALTITUDE = 0.0    
-WAYPOINT_REACHED_RADIUS = 1      # For rovers, altitude is 0
-FILE_NAME = "logged_coordinates.txt"  # Changed to cords.txt
-TURN_SPEED = 30
+ALTITUDE = 0.0
+WAYPOINT_REACHED_RADIUS = 1
 FORWARD_SPEED = 40
 BACKWARD_SPEED = -40
-forward_sound = "moveforward.wav"
-stop_sound = "stop.wav"
-left_sound = "left.wav"
-right_sound = "right.wav"
 
 vehicle = None
-arrived = False
 latest_servo1_value = None
 latest_servo3_value = None
 path = []
-location_map = {}  # Dictionary to store named locations
+path_total_cost = 0.0
+location_map = {}
 engine = None
 
 ddsm_ser = serial.Serial(DDSM_PORT, baudrate=SERIAL_BAUDRATE)
@@ -39,100 +30,105 @@ ddsm_ser.setRTS(False)
 ddsm_ser.setDTR(False)
 print("[System] DDSM Connected")
 
-# =================== MQTT Callbacks ===================
+# =================== MQTT CALLBACKS ===================
 def on_connect(client, userdata, flags, rc):
     print(f"MQTT_CLIENT::Connected with result code {rc}")
-    client.subscribe("chatpilot/rover/command")  # Subscribe to the command topic
+    client.subscribe("chatpilot/rover/command")
 
 def on_message(client, userdata, msg):
-    global path, vehicle
-    command_str = msg.payload.decode()
-    command_str = command_str.upper()
+    global path, vehicle, path_total_cost
+    command_str = msg.payload.decode().strip()
     print(f"MQTT_CLIENT::Received command: {command_str}")
 
-    if command_str == "FORWARD":
-        print("[System] Received command: FORWARD")
-        path = []  # Clear path to prioritize manual control
-        motor_control(FORWARD_SPEED, FORWARD_SPEED)
-    elif command_str == "LEFT":
-        print("[System] Received command: LEFT")
-        path = []  # Clear path to prioritize manual control
-        motor_control(30, 40)
-    elif command_str == "RIGHT":
-        print("[System] Received command: RIGHT")
-        path = []  # Clear path to prioritize manual control
-        motor_control(40, 30)
-    elif command_str == "STOP":
-        print("[System] Received command: STOP")
-        path = []  # Clear path to prioritize manual control
-        motor_control(0, 0)
-    elif command_str == "BACKWARD":
-        print("[System] Command received: BACKWARD")
-        motor_control(BACKWARD_SPEED, BACKWARD_SPEED)
-    elif command_str.startswith("NAVIGATE"):
-        print(f"{command_str}")
-        # Navigate: A,B
-        parts = command_str.split(":")[1].split(",")
-        if len(parts) != 2:
-            print("[Error] Invalid NAVIGATE format. Use NAVIGATE:START,END")
-            return
-        start = parts[0].strip()
-        end = parts[1].strip()
-        path = a_star(start, end)
-        engine.say(f"Navigating from {start} to {end}")
-        try:
-            for x in path:
-                target_location = LocationGlobalRelative(x["coords"][0], x["coords"][1], ALTITUDE)
-                goto_position(vehicle, target_location)
-                print(f"[System] Reached waypoint {x['node']+1} --> {x[0]}, {x[1]}")
-                time.sleep(0.5)
-            print("[System] Reached destination")
-            motor_control(0, 0)
+    command_up = command_str.upper()
 
-        except KeyboardInterrupt:
-            print("[System] Stopping test...")
-            motor_control(0, 0)
+    if command_up == "FORWARD":
+        print("[System] Command: FORWARD")
+        path = []
+        motor_control(FORWARD_SPEED, FORWARD_SPEED)
+    elif command_up == "BACKWARD":
+        print("[System] Command: BACKWARD")
+        path = []
+        motor_control(BACKWARD_SPEED, BACKWARD_SPEED)
+    elif command_up == "LEFT":
+        print("[System] Command: LEFT")
+        path = []
+        motor_control(30, 40)
+    elif command_up == "RIGHT":
+        print("[System] Command: RIGHT")
+        path = []
+        motor_control(40, 30)
+    elif command_up == "STOP":
+        print("[System] Command: STOP")
+        path = []
+        motor_control(0, 0)
+    elif command_up.startswith("NAVIGATE"):
+        try:
+            rest = command_str.split(":", 1)[1]
+            parts = [p.strip() for p in rest.split(",")]
+            if len(parts) != 2:
+                print("[Error] Invalid NAVIGATE format. Use NAVIGATE:START,END")
+                return
+            start = int(parts[0])
+            end = int(parts[1])
+        except Exception as e:
+            print(f"[Error] Parsing NAVIGATE: {e}")
+            return
+
+        # A* search
+        found_path, total_cost = a_star(start, end)
+        if not found_path:
+            print(f"[System] No path found from {start} to {end}.")
+            return
+
+        path = found_path
+        path_total_cost = total_cost
+        print(f"[System] Path with {len(path)} waypoints, cost={total_cost:.2f}m")
+        engine.say(f"Navigating from {start} to {end}. Distance {round(total_cost, 2)} meters.")
+        engine.runAndWait()
 
 # =================== FUNCTIONS ===================
-
 def get_haversine_distance(lat1, lon1, lat2, lon2):
-    """Calculate distance between two GPS coordinates in meters"""
-    R = 6371000  # Radius of Earth in meters
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
+    R = 6371000
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
     d_phi = math.radians(lat2 - lat1)
     d_lambda = math.radians(lon2 - lon1)
-
-    a = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-    return R * c
+    a = math.sin(d_phi/2)**2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda/2)**2
+    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 def scale_servo_to_speed(servo_value):
     if servo_value is None:
         return 0
-    # Map servo PWM (1000-2000 µs) to speed (-100 to 100)
     return int((servo_value - 1500) / 500 * 100)
 
 def goto_position(vehicle, target_location):
     global latest_servo1_value, latest_servo3_value
-    print(f"[Navigation] Moving to target: {target_location.lat}, {target_location.lon}")
-    vehicle.simple_goto(target_location)
+    if vehicle is None:
+        print("[Navigation] No vehicle connected.")
+        return
+
+    lat, lon, alt = target_location.lat, target_location.lon, target_location.alt
+    print(f"[Navigation] Moving to target: {lat}, {lon}, alt={alt}")
+    vehicle.simple_goto(LocationGlobalRelative(lat, lon, alt))
 
     while True:
         current_location = vehicle.location.global_relative_frame
+        if not current_location or not current_location.lat:
+            print("[Navigation] Waiting for GPS fix...")
+            time.sleep(0.5)
+            continue
+
         dist_to_target = get_haversine_distance(
             current_location.lat, current_location.lon,
-            target_location.lat, target_location.lon
+            lat, lon
         )
-        print(f"[Navigation] Distance to target: {dist_to_target:.2f} meters")
+        print(f"[Navigation] Distance to target: {dist_to_target:.2f}m")
 
         if dist_to_target <= WAYPOINT_REACHED_RADIUS:
-            print("[Navigation] Target Reached!")
+            print("[Navigation] Target reached.")
             break
 
-        servo1 = latest_servo1_value
-        servo3 = latest_servo3_value
+        servo1, servo3 = latest_servo1_value, latest_servo3_value
         speed_left = scale_servo_to_speed(servo1)
         speed_right = scale_servo_to_speed(servo3)
         motor_control(speed_left, speed_right)
@@ -140,35 +136,23 @@ def goto_position(vehicle, target_location):
 
 def motor_control(left, right):
     global ddsm_ser
-    command_right = {
-        "T": 10010,
-        "id": 2,
-        "cmd": -right,  # reverse polarity for right wheel
-        "act": 3
-    }
-    command_left = {
-        "T": 10010,
-        "id": 1,
-        "cmd": left,
-        "act": 3
-    }
-    ddsm_ser.write((json.dumps(command_right) + '\n').encode())
+    cmd_right = {"T": 10010, "id": 2, "cmd": -right, "act": 3}
+    cmd_left = {"T": 10010, "id": 1, "cmd": left, "act": 3}
+    ddsm_ser.write((json.dumps(cmd_right) + '\n').encode())
     time.sleep(0.01)
-    ddsm_ser.write((json.dumps(command_left) + '\n').encode())
+    ddsm_ser.write((json.dumps(cmd_left) + '\n').encode())
 
 # =================== MAIN ===================
-
 def main():
-    global path, location_map, vehicle, engine
+    global path, path_total_cost, location_map, vehicle, engine
 
-    # Initialize MQTT Client
     client = mqtt.Client()
     client.on_connect = on_connect
     client.on_message = on_message
     client.connect("13.232.191.178", 1883, 60)
     client.loop_start()
-    engine = pyttsx3.init()
 
+    engine = pyttsx3.init()
     print(f"[System] Loaded named locations: {location_map.keys()}")
 
     print("[System] Connecting to Pixhawk...")
@@ -193,28 +177,32 @@ def main():
     print(f"[System] Vehicle Mode --> {vehicle.mode.name}")
 
     try:
-        # Main loop to continuously check for navigation commands or execute existing path
         while True:
             if path:
-                print(f"[System] Traversing path: {path}")
-                for index, x in enumerate(path):
-                    target_location = LocationGlobalRelative(x[0], x[1], ALTITUDE)
-                    goto_position(vehicle, target_location)
-                    print(f"[System] Reached waypoint {index+1} --> {x[0]}, {x[1]}")
+                print(f"[System] Traversing path with {len(path)} waypoints (cost: {path_total_cost:.2f}m).")
+                for index, node in enumerate(path):
+                    lat, lon = node["coords"][0], node["coords"][1]
+                    target = LocationGlobalRelative(float(lat), float(lon), ALTITUDE)
+                    goto_position(vehicle, target)
+                    print(f"[System] Reached waypoint {index+1}: {lat}, {lon}")
                     time.sleep(0.5)
-                print("[System] Reached destination")
+                print("[System] Destination reached.")
                 motor_control(0, 0)
-                path = []
+                path.clear()
+                path_total_cost = 0.0
             time.sleep(1)
 
     except KeyboardInterrupt:
-        print("[System] Stopping test...")
+        print("[System] Keyboard interrupt, stopping...")
         motor_control(0, 0)
 
     finally:
-        vehicle.channels.overrides = {}
-        vehicle.armed = False
-        vehicle.close()
+        try:
+            vehicle.channels.overrides = {}
+            vehicle.armed = False
+            vehicle.close()
+        except Exception:
+            pass
         client.loop_stop()
         client.disconnect()
 
