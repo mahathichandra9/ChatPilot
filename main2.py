@@ -195,7 +195,7 @@ def main():
         return
 
     print("[System] Starting LIDAR...")
-    lidar = RPLidar(LIDAR_PORT)
+    lidar = RPLidar(LIDAR_PORT, timeout = 3)
     threading.Thread(target=lidar_thread_func, args=(lidar,), daemon=True).start()
     while latest_scan is None:
         print("[System] Waiting for LIDAR data...")
