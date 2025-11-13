@@ -317,6 +317,8 @@ def main():
                     time.sleep(0.5)
                 print("[System] Destination reached.")
                 motor_control(0, 0)
+                engine.say(f"Destination reached.")
+                engine.runAndWait()
                 path.clear()
                 path_total_cost = 0.0
             time.sleep(1)
