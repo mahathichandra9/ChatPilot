@@ -15,13 +15,13 @@ DDSM_PORT = '/dev/ttyACM1'
 SERIAL_BAUDRATE = 115200
 BAUDRATE = 57600
 ALTITUDE = 0.0
-WAYPOINT_REACHED_RADIUS = 1
+WAYPOINT_REACHED_RADIUS = 2
 FORWARD_SPEED = 40
 BACKWARD_SPEED = -40
 FRONT_ANGLE_RANGE = 30
 SIDE_ANGLE_LEFT = 90
 SIDE_ANGLE_RIGHT = 270
-MIN_DISTANCE_FRONT = 1500
+MIN_DISTANCE_FRONT = 1000
 LIDAR_PORT = "/dev/ttyUSB0"
 IS_MOVING = False
 latest_scan = None
@@ -46,7 +46,7 @@ def on_connect(client, userdata, flags, rc):
     client.subscribe("chatpilot/rover/command")
 
 def on_message(client, userdata, msg):
-    global path, vehicle, path_total_cost
+    global path, vehicle, path_total_cost, IS_MOVING, engine
     command_str = msg.payload.decode().strip()
     print(f"MQTT_CLIENT::Received command: {command_str}")
 
@@ -56,20 +56,24 @@ def on_message(client, userdata, msg):
         print("[System] Command: FORWARD")
         path = []
         motor_control(FORWARD_SPEED, FORWARD_SPEED)
+        engine.say("Moving forward")
         IS_MOVING = True
     elif command_up == "BACKWARD":
         print("[System] Command: BACKWARD")
         path = []
         motor_control(BACKWARD_SPEED, BACKWARD_SPEED)
+        engine.say("Moving backward")
         IS_MOVING = True
     elif command_up == "LEFT":
         print("[System] Command: LEFT")
         path = []
+        engine.say("Moving left")
         motor_control(30, 40)
         IS_MOVING = True
     elif command_up == "RIGHT":
         print("[System] Command: RIGHT")
         path = []
+        engine.say("moving right")
         motor_control(40, 30)
         IS_MOVING = True
     elif command_up == "STOP":
@@ -101,6 +105,7 @@ def on_message(client, userdata, msg):
         print(f"[System] Path with {len(path)} waypoints, cost={total_cost:.2f}m")
         engine.say(f"Navigating from {start} to {end}. Distance {round(total_cost, 2)} meters.")
         engine.runAndWait()
+    engine.runAndWait()
 
 # =================== FUNCTIONS ===================
 def get_haversine_distance(lat1, lon1, lat2, lon2):
@@ -162,11 +167,12 @@ def lidar_thread_func(lidar):
     global latest_scan
     for scan in lidar.iter_scans():
         latest_scan = scan
+        if (not is_front_clear() and IS_MOVING):
+            motor_control(0, 0)
+        elif (is_front_clear() and IS_MOVING):
+            motor_control(FORWARD_SPEED, FORWARD_SPEED)
 
-    if (not is_front_clear() and IS_MOVING):
-        motor_control(0, 0)
-    elif (is_front_clear() and IS_MOVING):
-        motor_control(FORWARD_SPEED, FORWARD_SPEED)
+    
 
 
 def is_front_clear():
@@ -204,7 +210,7 @@ def is_right_clear():
 
 # =================== MAIN ===================
 def main():
-    global path, path_total_cost, location_map, vehicle, engine
+    global path, path_total_cost, location_map, vehicle, engine, IS_MOVING
 
     client = mqtt.Client()
     client.on_connect = on_connect
