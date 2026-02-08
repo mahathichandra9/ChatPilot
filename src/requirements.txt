@@ -1,5 +1,5 @@
 dronekit==2.9.2
-rplidar==0.9.2
+rplidar-roboticia
 paho-mqtt==1.6.1
 pyttsx3==2.90
 playaudio==1.0.1
