@@ -38,14 +38,26 @@ def list_local_ipv4_addresses() -> List[str]:
 
     try:
         if system == "windows":
-            # parse ipconfig
+            # parse ipconfig - using simpler more robust patterns
             proc = subprocess.run(["ipconfig"], capture_output=True, text=True, timeout=3)
             out = proc.stdout
-            # IPv4 Address . . . . . . . . . . : 192.168.1.42
-            for m in re.finditer(r"IPv4 Address[.\s:]*?:\s*([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)", out, re.I):
+            # Match IPv4 addresses with various spacing patterns
+            for m in re.finditer(r"IPv4\s+[Aa]ddress[\s\.]+:\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)", out):
                 ip = m.group(1)
-                if not ip.startswith("127."):
+                if not ip.startswith("127.") and not ip.startswith("169.254"):
                     addrs.add(ip)
+            # Also try simple pattern
+            if not addrs:
+                for m in re.finditer(r"((?:[0-9]{1,3}\.){3}[0-9]{1,3})", out):
+                    ip = m.group(1)
+                    if not ip.startswith("127.") and not ip.startswith("169.254"):
+                        # validate it looks like an IP
+                        try:
+                            parts = [int(x) for x in ip.split(".")]
+                            if all(0 <= p <= 255 for p in parts) and parts != [255, 255, 255, 255]:
+                                addrs.add(ip)
+                        except:
+                            pass
         else:
             # try `ip -4 addr` (Linux)
             proc = subprocess.run(["/sbin/ip", "-4", "addr"], capture_output=True, text=True, timeout=2)
@@ -57,7 +69,7 @@ def list_local_ipv4_addresses() -> List[str]:
             if out:
                 for m in re.finditer(r"inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)/", out):
                     ip = m.group(1)
-                    if not ip.startswith("127."):
+                    if not ip.startswith("127.") and not ip.startswith("169.254"):
                         addrs.add(ip)
             else:
                 # macOS or systems without ip command -> parse ifconfig
@@ -65,10 +77,10 @@ def list_local_ipv4_addresses() -> List[str]:
                 out = proc.stdout
                 for m in re.finditer(r"\s+inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)\s", out):
                     ip = m.group(1)
-                    if not ip.startswith("127."):
+                    if not ip.startswith("127.") and not ip.startswith("169.254"):
                         addrs.add(ip)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Debug: Exception during address detection: {e}")
 
     # Last-resort: socket trick (may return a single IP, sometimes 127.x)
     try:
@@ -76,7 +88,7 @@ def list_local_ipv4_addresses() -> List[str]:
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
         s.close()
-        if ip and not ip.startswith("127."):
+        if ip and not ip.startswith("127.") and not ip.startswith("169.254"):
             addrs.add(ip)
     except Exception:
         pass
@@ -208,21 +220,45 @@ def choose_prefix_interactive() -> str:
         print("Could not detect local addresses. Please provide the prefix manually (e.g. 192.168.1).")
         sys.exit(1)
 
-    print("Detected IPv4 addresses on this machine:")
+    print("\nDetected IPv4 addresses on this machine:")
     for idx, a in enumerate(addrs):
         print(f"  [{idx}] {a}")
+    
     # prefer a non-VPN-looking address heuristically: pick the first 192.168.* or 10.* or 172.16-31.*
+    # Exclude addresses that look like VPN (high numbered addresses, VM addresses, etc.)
+    def is_likely_real_lan(addr):
+        parts = addr.split(".")
+        first = int(parts[0])
+        second = int(parts[1]) if len(parts) > 1 else 0
+        
+        # Prefer common private ranges
+        if first == 192 and second == 168:
+            return True
+        if first == 10:
+            return True
+        if first == 172 and 16 <= second <= 31:
+            return True
+        return False
+    
     preferred = None
     for a in addrs:
-        parts = a.split(".")
-        if parts[0]=="192" or parts[0]=="10" or (parts[0]=="172" and 16 <= int(parts[1]) <=31):
-            preferred = a
-            break
+        if is_likely_real_lan(a):
+            try:
+                # Try to ping to verify it's actually active
+                res = run_ping_and_get_ttl(a, timeout_ms=400)
+                if res is not None:
+                    preferred = a
+                    break
+            except:
+                preferred = a
+                break
+    
     if preferred:
-        print(f"Auto-selecting preferred address: {preferred}")
+        print(f"\nAuto-selecting preferred address: {preferred}")
         ip_choice = preferred
     else:
         # ask user to choose
+        print()
         while True:
             choice = input(f"Choose address index [0-{len(addrs)-1}] (or press Enter to pick {addrs[0]}): ").strip()
             if choice=="":
@@ -235,7 +271,7 @@ def choose_prefix_interactive() -> str:
                 pass
             print("Invalid choice.")
     prefix = ".".join(ip_choice.split(".")[:3])
-    print(f"Using prefix: {prefix}.x (from {ip_choice})")
+    print(f"Using prefix: {prefix}.x (from {ip_choice})\n")
     return prefix
 
 def main():
