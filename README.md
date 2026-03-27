@@ -1,6 +1,4 @@
-# 🚗 ChatPilot
-
-### Conversational Autonomous Driving Agent
+# 🚗 ChatPilot - Conversational Autonomous Driving Agent
 
 ---
 
