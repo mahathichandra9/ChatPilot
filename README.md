@@ -64,7 +64,7 @@ This enables **context-aware navigation with real-time feedback and adaptability
 ## 🔄 Workflow
 
 <p align="center">
-  <img src="images/chatpilot workflow.jpg" alt="Workflow Diagram" width="700">
+  <img src="images/chatpilot workflow.jpeg" alt="Workflow Diagram" width="700">
 </p>
 
 1. User provides a voice command
